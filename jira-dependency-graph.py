@@ -4,6 +4,7 @@
 
 import argparse
 import getpass
+import queue
 import sys
 import textwrap
 
@@ -147,6 +148,8 @@ def build_graph_data(start_issue_key, jira, excludes, show_directions, direction
     # since the graph can be cyclic we need to prevent infinite recursion
     seen = []
 
+    stk = queue.LifoQueue()
+
     def walk(issue_key, graph):
         """ issue is the JSON representation of the issue """
         issue = jira.get_issue(issue_key)
@@ -195,11 +198,21 @@ def build_graph_data(start_issue_key, jira, excludes, show_directions, direction
                         graph.append(result[1])
         # now construct graph data for all subtasks and links of this issue
         for child in (x for x in children if x not in seen):
-            walk(child, graph)
+            stk.put([child,graph])
+
         return graph
 
+    retgph = None
     project_prefix = start_issue_key.split('-', 1)[0]
-    return walk(start_issue_key, [])
+    stk.put([start_issue_key,[]])
+    while not stk.empty():
+      itm = stk.get()
+      if retgph is None:
+        retgph = walk(itm[0], itm[1])
+      else:
+        walk(itm[0], itm[1])
+
+    return retgph
 
 
 def create_graph_image(graph_data, image_file, node_shape):
